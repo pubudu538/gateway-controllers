@@ -123,32 +123,61 @@ func (p *ModifyHeadersPolicy) validateHeaderModifications(headersRaw interface{}
 }
 
 // parseHeaderModifications parses header modifications from config
-func (p *ModifyHeadersPolicy) parseHeaderModifications(headersRaw interface{}) []HeaderModification {
+// Returns error if any entry is malformed to ensure fail-fast behavior
+func (p *ModifyHeadersPolicy) parseHeaderModifications(headersRaw interface{}) ([]HeaderModification, error) {
 	headers, ok := headersRaw.([]interface{})
 	if !ok {
-		return nil
+		return nil, fmt.Errorf("headers must be an array")
 	}
 
 	modifications := make([]HeaderModification, 0, len(headers))
-	for _, headerRaw := range headers {
+	for i, headerRaw := range headers {
 		headerMap, ok := headerRaw.(map[string]interface{})
 		if !ok {
-			continue
+			return nil, fmt.Errorf("header[%d] must be an object", i)
+		}
+
+		// Safe type assertion for action
+		actionRaw, ok := headerMap["action"]
+		if !ok {
+			return nil, fmt.Errorf("header[%d] missing required 'action' field", i)
+		}
+		actionStr, ok := actionRaw.(string)
+		if !ok {
+			return nil, fmt.Errorf("header[%d].action must be a string", i)
+		}
+
+		// Safe type assertion for name
+		nameRaw, ok := headerMap["name"]
+		if !ok {
+			return nil, fmt.Errorf("header[%d] missing required 'name' field", i)
+		}
+		nameStr, ok := nameRaw.(string)
+		if !ok {
+			return nil, fmt.Errorf("header[%d].name must be a string", i)
+		}
+		if nameStr == "" {
+			return nil, fmt.Errorf("header[%d].name cannot be empty", i)
 		}
 
 		mod := HeaderModification{
-			Action: HeaderAction(strings.ToUpper(headerMap["action"].(string))),
-			Name:   strings.ToLower(headerMap["name"].(string)), // Normalize to lowercase
+			Action: HeaderAction(strings.ToUpper(actionStr)),
+			Name:   strings.ToLower(nameStr), // Normalize to lowercase
 		}
 
+		// Safe type assertion for value
 		if valueRaw, ok := headerMap["value"]; ok {
-			mod.Value = valueRaw.(string)
+			if valueStr, ok := valueRaw.(string); ok {
+				mod.Value = valueStr
+			} else {
+				return nil, fmt.Errorf("header[%d].value must be a string", i)
+			}
 		}
 
 		modifications = append(modifications, mod)
 	}
 
-	return modifications
+	return modifications, nil
 }
 
 // applyHeaderModifications applies header modifications and returns the result
@@ -181,7 +210,17 @@ func (p *ModifyHeadersPolicy) OnRequest(ctx *policy.RequestContext, params map[s
 	}
 
 	// Parse modifications
-	modifications := p.parseHeaderModifications(requestHeadersRaw)
+	modifications, err := p.parseHeaderModifications(requestHeadersRaw)
+	if err != nil {
+		// Configuration error - fail with 500
+		return policy.ImmediateResponse{
+			StatusCode: 500,
+			Headers: map[string]string{
+				"content-type": "application/json",
+			},
+			Body: []byte(fmt.Sprintf(`{"error": "Configuration Error", "message": "Invalid requestHeaders configuration: %s"}`, err.Error())),
+		}
+	}
 	if len(modifications) == 0 {
 		return policy.UpstreamRequestModifications{}
 	}
@@ -206,7 +245,18 @@ func (p *ModifyHeadersPolicy) OnResponse(ctx *policy.ResponseContext, params map
 	}
 
 	// Parse modifications
-	modifications := p.parseHeaderModifications(responseHeadersRaw)
+	modifications, err := p.parseHeaderModifications(responseHeadersRaw)
+	if err != nil {
+		// Configuration error - return error response by modifying upstream response
+		statusCode := 500
+		return policy.UpstreamResponseModifications{
+			StatusCode: &statusCode,
+			Body:       []byte(fmt.Sprintf(`{"error": "Configuration Error", "message": "Invalid responseHeaders configuration: %s"}`, err.Error())),
+			SetHeaders: map[string]string{
+				"content-type": "application/json",
+			},
+		}
+	}
 	if len(modifications) == 0 {
 		return policy.UpstreamResponseModifications{}
 	}

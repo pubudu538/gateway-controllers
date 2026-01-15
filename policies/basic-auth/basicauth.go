@@ -56,18 +56,41 @@ func (p *BasicAuthPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest performs Basic Authentication
 func (p *BasicAuthPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	// Get configuration parameters
-	expectedUsername := params["username"].(string)
-	expectedPassword := params["password"].(string)
+	// Get configuration parameters with safe type assertions
+	expectedUsername, ok := params["username"].(string)
+	if !ok || expectedUsername == "" {
+		return policy.ImmediateResponse{
+			StatusCode: 500,
+			Headers: map[string]string{
+				"content-type": "application/json",
+			},
+			Body: []byte(`{"error": "Internal Server Error", "message": "Invalid policy configuration: username must be a non-empty string"}`),
+		}
+	}
+
+	expectedPassword, ok := params["password"].(string)
+	if !ok || expectedPassword == "" {
+		return policy.ImmediateResponse{
+			StatusCode: 500,
+			Headers: map[string]string{
+				"content-type": "application/json",
+			},
+			Body: []byte(`{"error": "Internal Server Error", "message": "Invalid policy configuration: password must be a non-empty string"}`),
+		}
+	}
 
 	allowUnauthenticated := false
 	if allowUnauthRaw, ok := params["allowUnauthenticated"]; ok {
-		allowUnauthenticated = allowUnauthRaw.(bool)
+		if allowUnauthBool, ok := allowUnauthRaw.(bool); ok {
+			allowUnauthenticated = allowUnauthBool
+		}
 	}
 
 	realm := "Restricted"
 	if realmRaw, ok := params["realm"]; ok {
-		realm = realmRaw.(string)
+		if realmStr, ok := realmRaw.(string); ok && realmStr != "" {
+			realm = realmStr
+		}
 	}
 
 	// Extract and validate Authorization header
