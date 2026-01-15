@@ -173,16 +173,21 @@ func (p *BasicAuthPolicy) handleAuthFailure(ctx *policy.RequestContext, allowUna
 	}
 
 	// Return 401 Unauthorized response
+	// Escape realm value per RFC 7235 for quoted-string compliance
+	escapedRealm := strings.ReplaceAll(strings.ReplaceAll(realm, "\\", "\\\\"), "\"", "\\\"")
 	headers := map[string]string{
-		"www-authenticate": fmt.Sprintf("Basic realm=\"%s\"", realm),
+		"www-authenticate": fmt.Sprintf("Basic realm=\"%s\"", escapedRealm),
 		"content-type":     "application/json",
 	}
 
-	body := fmt.Sprintf(`{"error": "Unauthorized", "message": "Authentication required"}`)
+	body, _ := json.Marshal(map[string]string{
+		"error":   "Unauthorized",
+		"message": "Authentication required",
+	})
 
 	return policy.ImmediateResponse{
 		StatusCode: 401,
 		Headers:    headers,
-		Body:       []byte(body),
+		Body:       body,
 	}
 }

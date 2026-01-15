@@ -89,38 +89,40 @@ func (p *RespondPolicy) OnRequest(ctx *policy.RequestContext, params map[string]
 	// Extract headers with fail-fast validation
 	headers := make(map[string]string)
 	if headersRaw, ok := params["headers"]; ok {
-		if headersList, ok := headersRaw.([]interface{}); ok {
-			for i, headerRaw := range headersList {
-				headerMap, ok := headerRaw.(map[string]interface{})
-				if !ok {
-					return configError(fmt.Sprintf("headers[%d] must be an object", i))
-				}
-
-				// Safe type assertion for name
-				nameRaw, ok := headerMap["name"]
-				if !ok {
-					return configError(fmt.Sprintf("headers[%d] missing required 'name' field", i))
-				}
-				name, ok := nameRaw.(string)
-				if !ok {
-					return configError(fmt.Sprintf("headers[%d].name must be a string", i))
-				}
-				if name == "" {
-					return configError(fmt.Sprintf("headers[%d].name cannot be empty", i))
-				}
-
-				// Safe type assertion for value
-				valueRaw, ok := headerMap["value"]
-				if !ok {
-					return configError(fmt.Sprintf("headers[%d] missing required 'value' field", i))
-				}
-				value, ok := valueRaw.(string)
-				if !ok {
-					return configError(fmt.Sprintf("headers[%d].value must be a string", i))
-				}
-
-				headers[name] = value
+		headersList, ok := headersRaw.([]interface{})
+		if !ok {
+			return configError("headers must be an array")
+		}
+		for i, headerRaw := range headersList {
+			headerMap, ok := headerRaw.(map[string]interface{})
+			if !ok {
+				return configError(fmt.Sprintf("headers[%d] must be an object", i))
 			}
+
+			// Safe type assertion for name
+			nameRaw, ok := headerMap["name"]
+			if !ok {
+				return configError(fmt.Sprintf("headers[%d] missing required 'name' field", i))
+			}
+			name, ok := nameRaw.(string)
+			if !ok {
+				return configError(fmt.Sprintf("headers[%d].name must be a string", i))
+			}
+			if name == "" {
+				return configError(fmt.Sprintf("headers[%d].name cannot be empty", i))
+			}
+
+			// Safe type assertion for value
+			valueRaw, ok := headerMap["value"]
+			if !ok {
+				return configError(fmt.Sprintf("headers[%d] missing required 'value' field", i))
+			}
+			value, ok := valueRaw.(string)
+			if !ok {
+				return configError(fmt.Sprintf("headers[%d].value must be a string", i))
+			}
+
+			headers[name] = value
 		}
 	}
 
