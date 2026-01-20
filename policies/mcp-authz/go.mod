@@ -1,4 +1,4 @@
-module github.com/wso2/gateway-controllers/policies/jwt-auth
+module github.com/wso2/gateway-controllers/policies/mcp-authorization
 
 go 1.25.1
 
